@@ -1,1 +1,5 @@
-ebin
+ebin/
+.settings/
+*.log
+.project
+*.dump

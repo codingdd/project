@@ -14,22 +14,29 @@ start_link(ListenSocket) ->
 	gen_server:start_link(?MODULE, ListenSocket, []).
 
 init(ListenSocket) ->
- case prim_inet:async_accept(ListenSocket, -1) of
-        {ok, Ref} -> io:format("ready to ...");
-        Error     ->  io:format("ready to error")
-    end,
-    {ok, #state{listenSocket=ListenSocket}}.
+	%% 通知开始接收连接请求
+	gen_server:cast(self(), accept),
+	{ok,#state{listenSocket=ListenSocket}}.
 
 
 handle_call(Request, From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-handle_cast(Msg, State) ->
-    {noreply, State}.
+%% 处理开始连接指令
+handle_cast(accept, State) ->
+	accept(State);
 
-handle_info({inet_async, ListenSocket, Ref, {ok, Sock}}, State = #state{listenSocket=ListenSocket}) ->
-   io:format("连接成功。。。。~p~n",[ListenSocket]),{noreply, State#state{listenSocket = ListenSocket}};
+handle_cast(_Msg, State) ->
+	{noreply, State}.
+
+%% 接收到一个连接请求
+handle_info({inet_async, ListenSocket, _Ref, {ok, ClientSocket}}, State = #state{listenSocket=ListenSocket}) ->
+	case set_tcp_options(ListenSocket, ClientSocket) of
+		ok -> ok;
+		{error, Reason} ->  exit({set_sockopt, Reason})
+	end,
+	accept(State);			   
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -40,5 +47,27 @@ terminate(Reason, State) ->
 code_change(OldVsn, State, Extra) ->
     {ok, State}.
 
+%% 私有函数
+
+%% 异步等待一个连接
+accept(State = #state{listenSocket=ListenSocket}) ->
+    case prim_inet:async_accept(ListenSocket, -1) of
+        {ok, _Ref} -> {noreply, State#state{listenSocket=ListenSocket}};
+        Error     -> {stop, {cannot_accept, Error}, State}
+    end.
+
+%% 设置客户端socket的监听参数
+set_tcp_options(ListenSocket, ClientSocket) ->
+	inet_db:register_socket(ClientSocket, inet_tcp),
+	case prim_inet:getopts(ListenSocket, [active, nodelay, keepalive, delay_send, priority, tos]) of
+		{ok, Opts} -> 
+			case prim_int:setopts(ClientSocket, Opts) of
+				{ok} -> ok;
+				{Error} -> gen_tcp:close(ClientSocket), Error
+			end;
+		{Error} -> 
+			gen_tcp:close(ClientSocket),
+			Error
+	end.
 test_client() ->
 	gen_tcp:connect('localhost', 1234, ?TCP_OPTIONS).

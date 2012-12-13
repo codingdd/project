@@ -16,8 +16,8 @@ start_link() ->
 init([]) ->
     Child_1 = {tcp_listener_sup,{tcp_listener_sup,start_link,[]},
 	      permanent,2000,supervisor,[tcp_listener_sup]},
-%% 	Child_2 = {tcp_acceptor_sup,{tcp_acceptor_sup, start_link, []},
-%% 			  permanent, 2000, supervisor, [tcp_acceptor_sup]},
-    {ok, {{one_for_one,0,1}, [Child_1]}}.
+	Child_2 = {tcp_client_sup,{tcp_client_sup, start_link, []},
+			  permanent, 2000, supervisor, [tcp_client_sup]},
+    {ok, {{one_for_one,0,1}, [Child_1,Child_2]}}.
 
 
